@@ -1,0 +1,11 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Playfair+Display:wght@500;700&family=DM+Sans:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+body {
+  background: rgb(250, 247, 242);
+  font-family: 'DM Sans', sans-serif;
+}
+
+.bookman {
+  font-family: 'Playfair Display', serif;
+}
