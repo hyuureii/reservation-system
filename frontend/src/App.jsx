@@ -10,6 +10,7 @@ import Reservation from './Pages/Reservation'
 import Fillout from './Pages/Fillout'
 import Receipt from './Pages/Receipt'
 import StaffReservations from './Pages/StaffReservations'
+import StaffManagement from './Pages/StaffManagement'
 
 const Home = () => {
   return (
@@ -53,7 +54,7 @@ const App = () => {
           <Route index element={<Navigate to="reservations" replace />} />
           <Route path="reservations" element={<StaffReservations />} />
           <Route
-            path="management"
+            path="management" element={<StaffManagement />}
           />
         </Route>
       </Routes>

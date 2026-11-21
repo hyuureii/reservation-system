@@ -1,6 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { FaUsers } from 'react-icons/fa'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from '../supabaseClient'
 
 const Reservation = () => {
   const navigate = useNavigate()
@@ -9,7 +10,7 @@ const Reservation = () => {
   const [time, setTime] = useState('12:00')
   const [people, setPeople] = useState('2')
   const [selectedTable, setSelectedTable] = useState(null)
-
+  const [bookedTables, setBookedTables] = useState([])
   const tables = [
     { id: 1, seats: 8, area: 'Private Room' },
     { id: 2, seats: 2, area: 'Bar' },
@@ -22,6 +23,39 @@ const Reservation = () => {
     { id: 9, seats: 2, area: 'Window' },
   ]
 
+  useEffect(() => {
+    if (!date) {
+      setBookedTables([])
+      return
+    }
+
+    let cancelled = false
+
+    const loadBooked = async () => {
+      const { data, error } = await supabase.rpc('get_booked_tables', {
+        d: date,
+        t: time,
+      })
+
+      if (cancelled) return
+
+      if (error) {
+        console.error(error)
+        return
+      }
+
+      const booked = data || []
+      setBookedTables(booked)
+      setSelectedTable((current) => (booked.includes(current) ? null : current))
+    }
+
+    loadBooked()
+
+    return () => {
+      cancelled = true
+    }
+  }, [date, time])
+
   const handleContinue = () => {
     if (!date) {
       alert('Please select a reservation date.')
@@ -33,9 +67,7 @@ const Reservation = () => {
       return
     }
 
-    const table = tables.find(
-      (item) => item.id === selectedTable
-    )
+    const table = tables.find((item) => item.id === selectedTable)
 
     if (!table || Number(people) > table.seats) {
       alert('Please choose a table with enough seats.')
@@ -58,20 +90,15 @@ const Reservation = () => {
     <main className="min-h-screen w-full bg-[#F4F4F2] px-6 py-10 md:px-16">
       <div className="mx-auto w-full max-w-4xl">
 
-        {/* Page Heading */}
         <div className="mb-10 text-center">
           <h1 className="bookman text-4xl text-[#26221D]">
             Reserve Your Table
           </h1>
         </div>
 
-        {/* Date, Time, and Guests */}
         <div className="mb-8 flex flex-wrap items-end justify-center gap-4">
           <div className="flex flex-col gap-2">
-            <label className="text-sm text-[#A18D76]">
-              Date
-            </label>
-
+            <label className="text-sm text-[#A18D76]">Date</label>
             <input
               type="date"
               value={date}
@@ -83,10 +110,7 @@ const Reservation = () => {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-sm text-[#A18D76]">
-              Time
-            </label>
-
+            <label className="text-sm text-[#A18D76]">Time</label>
             <select
               value={time}
               onChange={(e) => setTime(e.target.value)}
@@ -103,10 +127,7 @@ const Reservation = () => {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-sm text-[#A18D76]">
-              Guests
-            </label>
-
+            <label className="text-sm text-[#A18D76]">Guests</label>
             <select
               value={people}
               onChange={(e) => {
@@ -126,26 +147,26 @@ const Reservation = () => {
             </select>
           </div>
         </div>
-        <p className="mb-3 text-sm text-[#A18D76]">
-          Choose a Table
-        </p>
+
+        <p className="mb-3 text-sm text-[#A18D76]">Choose a Table</p>
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3">
           {tables.map((table) => {
             const isSelected = selectedTable === table.id
-            const hasEnoughSeats =
-              table.seats >= Number(people)
+            const isBooked = bookedTables.includes(table.id)
+            const hasEnoughSeats = table.seats >= Number(people)
+            const isAvailable = hasEnoughSeats && !isBooked
 
             return (
               <button
                 key={table.id}
                 type="button"
-                disabled={!hasEnoughSeats}
+                disabled={!isAvailable}
                 onClick={() => setSelectedTable(table.id)}
                 className={`min-h-[120px] rounded-[24px] border px-6 py-5 text-left shadow-sm transition-colors ${
                   isSelected
                     ? 'border-[#CCA45E] bg-[#F0E5D1]'
-                    : hasEnoughSeats
+                    : isAvailable
                       ? 'border-[#E8E3DB] bg-[#FCFBF8] hover:border-[#CCA45E]'
                       : 'cursor-not-allowed border-[#E8E3DB] bg-[#EAE7E1] opacity-50'
                 }`}
@@ -160,12 +181,13 @@ const Reservation = () => {
                 </p>
 
                 <p className="mt-1 text-xs text-[#A18D76]">
-                  {table.area}
+                  {isBooked ? 'Booked' : table.area}
                 </p>
               </button>
             )
           })}
         </div>
+
         <div className="mt-8 flex justify-center">
           <button
             type="button"
@@ -180,5 +202,4 @@ const Reservation = () => {
     </main>
   )
 }
-
 export default Reservation

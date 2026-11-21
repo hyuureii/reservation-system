@@ -6,6 +6,8 @@ import {
   FaCreditCard,
   FaMoneyBillWave,
 } from 'react-icons/fa'
+import { supabase } from '../supabaseClient'
+
 
 const Fillout = () => {
   const navigate = useNavigate()
@@ -15,6 +17,8 @@ const Fillout = () => {
   const [email, setEmail] = useState('')
   const [requests, setRequests] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('gcash')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
 
   const paymentOptions = [
     {
@@ -36,20 +40,45 @@ const Fillout = () => {
       icon: <FaMoneyBillWave size={16} />,
     },
   ]
-  const handlePay = (e) => {
-    e.preventDefault()
+ const handlePay = async (e) => {
+  e.preventDefault()
+  setSubmitting(true)
+  setError('')
 
-    navigate('/receipt', {
-      state: {
-        ...state,
-        fullName,
-        phone,
-        email,
-        requests,
-        paymentMethod,
-      },
-    })
+  const { error: dbError } = await supabase.from('reservations').insert({
+    table_id: state.selectedTable,
+    reservation_date: state.date,
+    reservation_time: state.time,
+    guests: Number(state.people),
+    customer_name: fullName,
+    phone,
+    email: email || null,
+    requests: requests || null,
+    payment_method: paymentMethod,
+  })
+
+  setSubmitting(false)
+
+  if (dbError) {
+    setError(
+      dbError.code === '23505'
+        ? 'Sorry, that table was just booked by someone else. Please go back and choose another table.'
+        : 'Something went wrong. Please try again.'
+    )
+    return
   }
+
+  navigate('/receipt', {
+    state: {
+      ...state,
+      fullName,
+      phone,
+      email,
+      requests,
+      paymentMethod,
+    },
+  })
+}
 
   if (!state) {
     return <Navigate to="/reservation" replace />
@@ -173,15 +202,22 @@ const Fillout = () => {
           ))}
         </div>
 
-        <button
+       {error && (
+  <p className="mb-4 rounded-xl bg-[#FBE3E3] px-4 py-3 text-sm text-[#9B2C2C]">
+          {error}
+         </p>
+          )}
+
+      <button
           type="submit"
-          className="w-full rounded-full bg-[#E8D2AA] py-4 text-sm font-semibold text-[#26221D] transition-colors hover:bg-[#D9BD8D]"
-        >
-          Pay
-          {paymentMethod === 'gcash' && ' with GCash'}
-          {paymentMethod === 'card' && ' by Card'}
-          {paymentMethod === 'cash' && ' on Arrival'}
-        </button>
+          disabled={submitting}
+          className="w-full rounded-full bg-[#E8D2AA] py-4 text-sm font-semibold text-[#26221D] transition-colors hover:bg-[#D9BD8D] disabled:opacity-60"
+          >
+          {submitting ? 'Saving...' : 'Pay'}
+          {!submitting && paymentMethod === 'gcash' && ' with GCash'}
+          {!submitting && paymentMethod === 'card' && ' by Card'}
+          {!submitting && paymentMethod === 'cash' && ' on Arrival'}
+      </button>
       </form>
     </section>
   )
