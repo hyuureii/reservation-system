@@ -1,23 +1,15 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { supabase } from '../supabaseClient'
 
 const serif = { fontFamily: "'Cormorant Garamond', Georgia, serif" }
 
-const initialReservations = [
-  { id: 1, customer: 'Andrei Balajadia', table: 1, date: '2026-11-07', time: '17:30', guests: 2, payment: 'Confirmed', status: 'Reserved' },
-  { id: 2, customer: 'Emmanuel Fernandez', table: 2, date: '2026-11-07', time: '19:30', guests: 2, payment: 'Pending', status: 'Reserved' },
-  { id: 3, customer: 'Aarron Clark Diaz', table: 3, date: '2026-11-08', time: '19:30', guests: 6, payment: 'Confirmed', status: 'Reserved' },
-  { id: 4, customer: 'Renzo Demain', table: 4, date: '2026-11-05', time: '20:00', guests: 4, payment: 'Confirmed', status: 'Seated' },
-  { id: 5, customer: 'Alizza Nicole Bravo', table: 5, date: '2026-11-08', time: '12:00', guests: 4, payment: 'Confirmed', status: 'Reserved' },
-  { id: 6, customer: 'Benjamin Harold Delape', table: 6, date: '2026-11-09', time: '18:00', guests: 8, payment: 'Pending', status: 'Cancelled' },
-  { id: 7, customer: 'Kerstain Faith Abdulla', table: 7, date: '2026-11-06', time: '13:00', guests: 2, payment: 'Confirmed', status: 'Reserved' },
-  { id: 8, customer: 'Alexandra Mertz San Juan', table: 8, date: '2026-11-08', time: '19:00', guests: 2, payment: 'Confirmed', status: 'Reserved' },
-]
 const statusOptions = ['Reserved', 'Seated', 'Cancelled']
 
 const paymentStyles = {
-  Confirmed: 'bg-[#D6F7E8] text-[#0F6B4C] border-[#A7E8CF]',
+  Paid: 'bg-[#D6F7E8] text-[#0F6B4C] border-[#A7E8CF]',
   Pending: 'bg-[#FBEFD5] text-[#8A6420] border-[#F0D9A5]',
 }
+
 const statusStyles = {
   Reserved: 'border-[#CFCBC5] text-[#26221E]',
   Seated: 'border-[#A7E8CF] bg-[#D6F7E8] text-[#0F6B4C]',
@@ -38,13 +30,49 @@ const formatDate = (date) =>
   })
 
 const StaffReservations = () => {
-  const [reservations, setReservations] = useState(initialReservations)
+  const [reservations, setReservations] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [dateInput, setDateInput] = useState('')
   const [appliedDate, setAppliedDate] = useState('')
 
-  const visible = appliedDate
-    ? reservations.filter((r) => r.date === appliedDate)
-    : reservations
+  useEffect(() => {
+    let cancelled = false
+
+    const load = async () => {
+      setLoading(true)
+      setError('')
+
+      let query = supabase
+        .from('reservations')
+        .select('*')
+        .order('reservation_date', { ascending: true })
+        .order('reservation_time', { ascending: true })
+
+      if (appliedDate) {
+        query = query.eq('reservation_date', appliedDate)
+      }
+
+      const { data, error: dbError } = await query
+
+      if (cancelled) return
+
+      if (dbError) {
+        console.error(dbError)
+        setError('Could not load reservations.')
+      } else {
+        setReservations(data)
+      }
+
+      setLoading(false)
+    }
+
+    load()
+
+    return () => {
+      cancelled = true
+    }
+  }, [appliedDate])
 
   const handleSearch = (e) => {
     e.preventDefault()
@@ -56,7 +84,22 @@ const StaffReservations = () => {
     setAppliedDate('')
   }
 
-  const handleStatusChange = (id, newStatus) => {
+  const handleStatusChange = async (id, newStatus) => {
+    const { error: dbError } = await supabase
+      .from('reservations')
+      .update({ status: newStatus })
+      .eq('id', id)
+
+    if (dbError) {
+      console.error(dbError)
+      alert(
+        dbError.code === '23505'
+          ? 'Cannot restore this reservation: the table was booked by someone else for that time.'
+          : 'Could not update the status. Please try again.'
+      )
+      return
+    }
+
     setReservations((current) =>
       current.map((r) => (r.id === id ? { ...r, status: newStatus } : r))
     )
@@ -102,6 +145,12 @@ const StaffReservations = () => {
           )}
         </form>
 
+        {error && (
+          <p className="mb-6 rounded-xl bg-[#FBE3E3] px-4 py-3 text-sm text-[#9B2C2C]">
+            {error}
+          </p>
+        )}
+
         <div className="overflow-x-auto rounded-[24px] border border-[#E8E3DB] bg-white">
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead>
@@ -115,26 +164,35 @@ const StaffReservations = () => {
               </tr>
             </thead>
             <tbody>
-              {visible.length === 0 ? (
+              {loading ? (
                 <tr>
                   <td colSpan="6" className="px-6 py-12 text-center text-[#A18D76]">
-                    No reservations for this date.
+                    Loading...
+                  </td>
+                </tr>
+              ) : reservations.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="px-6 py-12 text-center text-[#A18D76]">
+                    No reservations found.
                   </td>
                 </tr>
               ) : (
-                visible.map((r) => (
+                reservations.map((r) => (
                   <tr key={r.id} className="border-b border-[#F1EFEC] last:border-b-0">
-                    <td className="px-6 py-4 font-medium text-[#26221E]">{r.customer}</td>
-                    <td className="px-6 py-4 text-[#756D64]">Table {r.table}</td>
+                    <td className="px-6 py-4">
+                      <p className="font-medium text-[#26221E]">{r.customer_name}</p>
+                      <p className="text-xs text-[#A18D76]">{r.phone}</p>
+                    </td>
+                    <td className="px-6 py-4 text-[#756D64]">Table {r.table_id}</td>
                     <td className="px-6 py-4 text-[#756D64]">
-                      {formatDate(r.date)} · {formatTime(r.time)}
+                      {formatDate(r.reservation_date)} · {formatTime(r.reservation_time)}
                     </td>
                     <td className="px-6 py-4 text-[#756D64]">{r.guests}</td>
                     <td className="px-6 py-4">
                       <span
-                        className={`inline-block rounded-full border px-3 py-1 text-xs font-medium ${paymentStyles[r.payment]}`}
+                        className={`inline-block rounded-full border px-3 py-1 text-xs font-medium ${paymentStyles[r.payment_status] || paymentStyles.Pending}`}
                       >
-                        {r.payment}
+                        {r.payment_status}
                       </span>
                     </td>
                     <td className="px-6 py-4">

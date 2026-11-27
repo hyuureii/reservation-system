@@ -1,16 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { FaSearch, FaPlus, FaPen, FaTrash, FaEnvelope, FaPhone } from 'react-icons/fa'
+import { supabase } from '../supabaseClient'
 
 const serif = { fontFamily: "'Cormorant Garamond', Georgia, serif" }
-
-const initialStaff = [
-  { id: 1, name: 'Guia Joy Gimoto', position: 'Restaurant Manager', email: 'guia@hukbalajadia.com', phone: '+63 917 111 2233' },
-  { id: 2, name: 'Arron Chester Roadiel', position: 'Head Chef', email: 'arron@hukbalajadia.com', phone: '+63 918 222 3344' },
-  { id: 3, name: 'Aldrid Carcosia', position: 'Host', email: 'aldrid@hukbalajadia.com', phone: '+63 919 333 4455' },
-  { id: 4, name: 'Sophia Rowe Nadezhda', position: 'Server', email: 'sophia@hukbalajadia.com', phone: '+63 920 444 5566' },
-  { id: 5, name: 'Ansherina Mongcal', position: 'Server', email: 'ansherina@hukbalajadia.com', phone: '+63 921 555 6677' },
-  { id: 6, name: 'Jonard Bartolome', position: 'Barista', email: 'jonard@hukbalajadia.com', phone: '+63 922 666 7788' },
-]
 
 const emptyForm = { name: '', position: '', email: '', phone: '' }
 
@@ -26,10 +18,41 @@ const inputClass =
   'w-full rounded-xl border border-[#CFCBC5] px-4 py-3 text-sm outline-none focus:border-[#CCA45E]'
 
 const StaffManagement = () => {
-  const [staff, setStaff] = useState(initialStaff)
+  const [staff, setStaff] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [modal, setModal] = useState(null)
   const [form, setForm] = useState(emptyForm)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const load = async () => {
+      const { data, error: dbError } = await supabase
+        .from('staff')
+        .select('*')
+        .order('created_at', { ascending: true })
+
+      if (cancelled) return
+
+      if (dbError) {
+        console.error(dbError)
+        setError('Could not load staff.')
+      } else {
+        setStaff(data)
+      }
+
+      setLoading(false)
+    }
+
+    load()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const visible = staff.filter((person) => {
     const text = query.toLowerCase()
@@ -60,26 +83,62 @@ const StaffManagement = () => {
     setForm((current) => ({ ...current, [field]: value }))
   }
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault()
+    setSaving(true)
+    setError('')
 
     if (modal.mode === 'add') {
-      setStaff((current) => [...current, { id: Date.now(), ...form }])
+      const { data, error: dbError } = await supabase
+        .from('staff')
+        .insert(form)
+        .select()
+        .single()
+
+      if (dbError) {
+        console.error(dbError)
+        setError('Could not add staff member.')
+      } else {
+        setStaff((current) => [...current, data])
+        closeModal()
+      }
     } else {
-      setStaff((current) =>
-        current.map((person) =>
-          person.id === modal.id ? { ...person, ...form } : person
+      const { data, error: dbError } = await supabase
+        .from('staff')
+        .update(form)
+        .eq('id', modal.id)
+        .select()
+        .single()
+
+      if (dbError) {
+        console.error(dbError)
+        setError('Could not save changes.')
+      } else {
+        setStaff((current) =>
+          current.map((person) => (person.id === modal.id ? data : person))
         )
-      )
+        closeModal()
+      }
     }
 
-    closeModal()
+    setSaving(false)
   }
 
-  const handleDelete = (person) => {
-    if (window.confirm(`Delete ${person.name}?`)) {
-      setStaff((current) => current.filter((item) => item.id !== person.id))
+  const handleDelete = async (person) => {
+    if (!window.confirm(`Delete ${person.name}?`)) return
+
+    const { error: dbError } = await supabase
+      .from('staff')
+      .delete()
+      .eq('id', person.id)
+
+    if (dbError) {
+      console.error(dbError)
+      setError('Could not delete staff member.')
+      return
     }
+
+    setStaff((current) => current.filter((item) => item.id !== person.id))
   }
 
   return (
@@ -117,9 +176,17 @@ const StaffManagement = () => {
           </button>
         </div>
 
-        {visible.length === 0 ? (
+        {error && !modal && (
+          <p className="mb-6 rounded-xl bg-[#FBE3E3] px-4 py-3 text-sm text-[#9B2C2C]">
+            {error}
+          </p>
+        )}
+
+        {loading ? (
+          <p className="py-16 text-center text-[#A18D76]">Loading...</p>
+        ) : visible.length === 0 ? (
           <p className="py-16 text-center text-[#A18D76]">
-            No staff found.
+            {staff.length === 0 ? 'No staff yet. Click Add Staff to create one.' : 'No staff found.'}
           </p>
         ) : (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -245,6 +312,12 @@ const StaffManagement = () => {
               />
             </div>
 
+            {error && (
+              <p className="mb-4 rounded-xl bg-[#FBE3E3] px-4 py-3 text-sm text-[#9B2C2C]">
+                {error}
+              </p>
+            )}
+
             <div className="flex gap-3">
               <button
                 type="button"
@@ -255,9 +328,10 @@ const StaffManagement = () => {
               </button>
               <button
                 type="submit"
-                className="flex-1 rounded-full bg-[#CCA45E] py-3 text-sm font-medium text-black transition-colors hover:bg-[#B88D45]"
+                disabled={saving}
+                className="flex-1 rounded-full bg-[#CCA45E] py-3 text-sm font-medium text-black transition-colors hover:bg-[#B88D45] disabled:opacity-60"
               >
-                Save
+                {saving ? 'Saving...' : 'Save'}
               </button>
             </div>
           </form>

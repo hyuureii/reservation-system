@@ -6,12 +6,13 @@ import {
   FaCreditCard,
   FaMoneyBillWave,
 } from 'react-icons/fa'
-import { supabase } from '../supabaseClient'
 
+const API_URL = import.meta.env.VITE_API_URL
 
 const Fillout = () => {
   const navigate = useNavigate()
   const { state } = useLocation()
+
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
@@ -40,45 +41,52 @@ const Fillout = () => {
       icon: <FaMoneyBillWave size={16} />,
     },
   ]
- const handlePay = async (e) => {
-  e.preventDefault()
-  setSubmitting(true)
-  setError('')
 
-  const { error: dbError } = await supabase.from('reservations').insert({
-    table_id: state.selectedTable,
-    reservation_date: state.date,
-    reservation_time: state.time,
-    guests: Number(state.people),
-    customer_name: fullName,
-    phone,
-    email: email || null,
-    requests: requests || null,
-    payment_method: paymentMethod,
-  })
+  const handlePay = async (e) => {
+    e.preventDefault()
+    setSubmitting(true)
+    setError('')
 
-  setSubmitting(false)
+    try {
+      const response = await fetch(`${API_URL}/api/reservations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tableId: state.selectedTable,
+          date: state.date,
+          time: state.time,
+          guests: Number(state.people),
+          fullName,
+          phone,
+          email,
+          requests,
+          paymentMethod,
+        }),
+      })
 
-  if (dbError) {
-    setError(
-      dbError.code === '23505'
-        ? 'Sorry, that table was just booked by someone else. Please go back and choose another table.'
-        : 'Something went wrong. Please try again.'
-    )
-    return
+      const result = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        setError(
+          response.status === 409
+            ? 'Sorry, that table was just booked by someone else. Please go back and choose another table.'
+            : result.error || 'Something went wrong. Please try again.'
+        )
+        setSubmitting(false)
+        return
+      }
+
+      if (result.checkoutUrl) {
+        window.location.href = result.checkoutUrl
+        return
+      }
+
+      navigate(`/receipt?reservation=${result.id}`)
+    } catch {
+      setError('Could not reach the server. Please try again.')
+      setSubmitting(false)
+    }
   }
-
-  navigate('/receipt', {
-    state: {
-      ...state,
-      fullName,
-      phone,
-      email,
-      requests,
-      paymentMethod,
-    },
-  })
-}
 
   if (!state) {
     return <Navigate to="/reservation" replace />
@@ -202,22 +210,22 @@ const Fillout = () => {
           ))}
         </div>
 
-       {error && (
-  <p className="mb-4 rounded-xl bg-[#FBE3E3] px-4 py-3 text-sm text-[#9B2C2C]">
-          {error}
-         </p>
-          )}
+        {error && (
+          <p className="mb-4 rounded-xl bg-[#FBE3E3] px-4 py-3 text-sm text-[#9B2C2C]">
+            {error}
+          </p>
+        )}
 
-      <button
+        <button
           type="submit"
           disabled={submitting}
           className="w-full rounded-full bg-[#E8D2AA] py-4 text-sm font-semibold text-[#26221D] transition-colors hover:bg-[#D9BD8D] disabled:opacity-60"
-          >
-          {submitting ? 'Saving...' : 'Pay'}
+        >
+          {submitting ? 'Please wait...' : 'Pay'}
           {!submitting && paymentMethod === 'gcash' && ' with GCash'}
           {!submitting && paymentMethod === 'card' && ' by Card'}
           {!submitting && paymentMethod === 'cash' && ' on Arrival'}
-      </button>
+        </button>
       </form>
     </section>
   )
